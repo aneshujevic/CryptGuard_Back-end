@@ -6,7 +6,7 @@ import (
 )
 
 type UserDatabase struct {
-	Filename string `json:"name"`
+	Filename string 	`json:"name"`
 	File multipart.File `json:"file"`
-	Timestamp time.Time
+	Timestamp time.Time `json:"-"`
 }

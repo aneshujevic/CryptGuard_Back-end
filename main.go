@@ -2,16 +2,15 @@ package main
 
 import (
 	"CryptGuard_Back-end/controllers"
-	"github.com/kataras/iris/v12"
-	"github.com/kataras/iris/v12/mvc"
+	"github.com/gofiber/fiber/v2"
 )
 
 func main() {
-	app := iris.New()
-	mvc.Configure(app.Party("/user"), setup)
-	_ = app.Listen(":8080")
-}
+	app := fiber.New()
 
-func setup(app *mvc.Application) {
-	app.Handle(new(controllers.UserController))
+	usersAPI := app.Group("/user")
+	controllers.SetupUserRoutes(&usersAPI)
+
+
+	_ = app.Listen(":8080")
 }
