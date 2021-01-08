@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/kataras/iris"
-	"github.com/kataras/iris/mvc"
-	"github.com/owlhoo/CryptGuard_Back-end/controllers"
+	"CryptGuard_Back-end/controllers"
+	"github.com/kataras/iris/v12"
+	"github.com/kataras/iris/v12/mvc"
 )
 
 func main() {
