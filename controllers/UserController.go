@@ -29,22 +29,24 @@ func SetupControllerAndRoutes(userRoute *fiber.Router) {
 		panic("Could not get users collection")
 	}
 
-	(*userRoute).Get("", userController.Get)
-	(*userRoute).Post("register", userController.Post)
-	(*userRoute).Put("", userController.Put)
+	(*userRoute).Get("/profile", userController.GetUser)
+	(*userRoute).Post("/register", userController.PostUser)
+	(*userRoute).Get("/database", userController.GetPasswordDatabase)
+	(*userRoute).Post("/database", userController.PostPasswordDatabase)
 }
 
-func (uc *UserController) Put(ctx *fiber.Ctx) error {
-	// TODO: Implement logic for updating
-	file, err := ctx.FormFile("file")
-	if err != nil {
-		return err
-	}
-
-	return ctx.SaveFile(file, fmt.Sprintf("./user_databases/%s", file.Filename))
+func (uc *UserController) GetUser(ctx *fiber.Ctx) error {
+	return ctx.JSON( models.User {
+		Username:          "hello",
+		Password:          "world",
+		PasswordExpired:   false,
+		PasswordsSent:     0,
+		TimeBan:           time.Now(),
+		PasswordsDatabase: models.PasswordDatabaseModel{},
+	})
 }
 
-func (uc *UserController) Post(ctx *fiber.Ctx) error {
+func (uc *UserController) PostUser(ctx *fiber.Ctx) error {
 	user := models.User{
 		Username:          ctx.Get("username"),
 		Password:          "",
@@ -59,16 +61,30 @@ func (uc *UserController) Post(ctx *fiber.Ctx) error {
 		log.Fatal(err)
 		return err
 	}
+
+	return err
+}
+
+func (uc *UserController) GetPasswordDatabase(ctx *fiber.Ctx) error {
 	return nil
 }
 
-func (uc *UserController) Get(ctx *fiber.Ctx) error {
-	return ctx.JSON( models.User {
-			Username:          "hello",
-			Password:          "world",
-			PasswordExpired:   false,
-			PasswordsSent:     0,
-			TimeBan:           time.Now(),
-			PasswordsDatabase: models.PasswordDatabaseModel{},
-		})
+func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx)  error {
+	file, err := ctx.FormFile("file")
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+
+	err = ctx.SaveFile(file, fmt.Sprintf("./user_databases/%s", file.Filename))
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+
+	return err
+}
+
+func (uc *UserController) PutPasswordDatabase(ctx *fiber.Ctx) error {
+	return nil
 }
