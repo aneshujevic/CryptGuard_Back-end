@@ -15,18 +15,18 @@ func SetupUserRoutes(userRoute *fiber.Router) {
 
 func Put(ctx *fiber.Ctx) error {
 	// TODO: Implement logic for updating
-	file, error := ctx.FormFile("file")
-	if error != nil {
-		return error
+	file, err := ctx.FormFile("file")
+	if err != nil {
+		return err
 	}
 
 	return ctx.SaveFile(file, fmt.Sprintf("./user_databases/%s", file.Filename))
 }
 
 func Post(ctx *fiber.Ctx) error {
-	file, error := ctx.FormFile("file")
-	if error != nil {
-		return error
+	file, err := ctx.FormFile("file")
+	if err != nil {
+		return err
 	}
 
 	return ctx.SaveFile(file, fmt.Sprintf("./user_databases/%s", file.Filename))
