@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-type UserDatabase struct {
-	Filename string 	`json:"name"`
-	File multipart.File `json:"file"`
+type PasswordDatabaseModel struct {
+	Filename string 	`json:"name,validate:required"`
+	File multipart.File `json:"file,validate:required"`
 	Timestamp time.Time `json:"-"`
 }

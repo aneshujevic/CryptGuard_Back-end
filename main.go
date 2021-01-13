@@ -10,9 +10,9 @@ func main() {
 	app := fiber.New()
 
 	usersAPI := app.Group("/user")
-	controllers.SetupUserRoutes(&usersAPI)
-	dbObj := database.Database{}
-	dbObj.GetInstance()
+	controllers.SetupControllerAndRoutes(&usersAPI)
+	database.GetInstance()
+	database.DestroyInstance()
 
 	_ = app.Listen(":8080")
 }
