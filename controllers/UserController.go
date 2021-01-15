@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/x/mongo/driver/uuid"
 	"log"
 	"time"
 )
@@ -39,6 +38,7 @@ func SetupControllerAndRoutes(userRoute *fiber.Router) {
 	(*userRoute).Post("/database", UserControllerInstance.PostPasswordDatabase)
 }
 
+// public accessible handlers
 func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
 	user := models.User{
 		Username:         ctx.Get("username"),
@@ -172,6 +172,7 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{"token": t})
 }
 
+// logged in only handlers
 func (uc *UserController) GetUser(ctx *fiber.Ctx) error {
 	user := ctx.Locals("user").(*jwt.Token)
 	claims := user.Claims.(jwt.MapClaims)
@@ -191,7 +192,28 @@ func (uc *UserController) GetUser(ctx *fiber.Ctx) error {
 }
 
 func (uc *UserController) GetPasswordDatabase(ctx *fiber.Ctx) error {
-	return nil
+	user := ctx.Locals("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	username := claims["username"].(string)
+	var foundUser models.User
+
+	err := uc.collection.FindOne(
+		context.TODO(),
+		bson.M{"Username": username}).Decode(&foundUser)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Error finding user with username " + username + ".",
+		})
+	}
+
+	err = ctx.SendFile(fmt.Sprintf("../user_databases/%s", foundUser.PasswordDatabase.Filename), true)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "No database found.",
+		})
+	}
+
+	return err
 }
 
 func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
@@ -201,25 +223,32 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 
 	file, err := ctx.FormFile("file")
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "No file uploaded.",
+		})
 	}
 
 	filename := uuid.New()
 
 	err = ctx.SaveFile(file, fmt.Sprintf("../user_databases/%s", filename))
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Error while saving file.",
+		})
 	}
 
-	uc.collection.FindOneAndUpdate(
+	_, err = uc.collection.UpdateOne(
 		context.TODO(),
 		bson.M{"Username": username},
 		bson.M{"$set" : bson.M{
 			"PasswordDatabase.$.filename": filename,
 			"PasswordDatabase.$.timestamp": time.Now().Unix(),
 		}})
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Database file update error.",
+		})
+	}
 
 	return err
 }
