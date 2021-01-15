@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/x/mongo/driver/uuid"
 	"log"
 	"time"
 )
@@ -39,13 +41,13 @@ func SetupControllerAndRoutes(userRoute *fiber.Router) {
 
 func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
 	user := models.User{
-		Username:          ctx.Get("username"),
-		Email:             ctx.Get("email"),
-		Password:          "",
-		PasswordExpired:   true,
-		LoginAttempts:     0,
-		TimeBan:           time.Time{},
-		PasswordsDatabase: models.PasswordDatabaseModel{},
+		Username:         ctx.Get("username"),
+		Email:            ctx.Get("email"),
+		Password:         "",
+		PasswordExpired:  true,
+		LoginAttempts:    0,
+		TimeBan:          time.Time{},
+		PasswordDatabase: models.PasswordDatabaseModel{},
 	}
 
 	var err error
@@ -193,17 +195,31 @@ func (uc *UserController) GetPasswordDatabase(ctx *fiber.Ctx) error {
 }
 
 func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
+	user := ctx.Locals("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	username := claims["username"].(string)
+
 	file, err := ctx.FormFile("file")
 	if err != nil {
 		log.Fatal(err)
 		return err
 	}
 
-	err = ctx.SaveFile(file, fmt.Sprintf("./user_databases/%s", file.Filename))
+	filename := uuid.New()
+
+	err = ctx.SaveFile(file, fmt.Sprintf("../user_databases/%s", filename))
 	if err != nil {
 		log.Fatal(err)
 		return err
 	}
+
+	uc.collection.FindOneAndUpdate(
+		context.TODO(),
+		bson.M{"Username": username},
+		bson.M{"$set" : bson.M{
+			"PasswordDatabase.$.filename": filename,
+			"PasswordDatabase.$.timestamp": time.Now().Unix(),
+		}})
 
 	return err
 }
