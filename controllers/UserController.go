@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"log"
+	"os"
 	"time"
 )
 
@@ -19,35 +20,43 @@ type UserController struct {
 	collection *mongo.Collection
 }
 
-var UserControllerInstance *UserController
+var userControllerInstance *UserController
+
+func GetUserControllerInstance() *UserController {
+	if userControllerInstance == nil {
+		userControllerInstance = &UserController{}
+		if userControllerInstance.collection == nil {
+			client := (database.GetInstance()).Client
+			if client == nil {
+				panic("Could not get database client.")
+			}
+
+			userControllerInstance.collection = client.Database(database.Name).Collection("users")
+			if userControllerInstance.collection == nil {
+				panic("Could not get users collection")
+			}
+		}
+	}
+	return userControllerInstance
+}
 
 func SetupControllerAndRoutes(userRoute *fiber.Router) {
-	UserControllerInstance = &UserController{}
-	client := (database.GetInstance()).Client
-	if client == nil {
-		panic("Could not get database client.")
-	}
+	uc := GetUserControllerInstance()
 
-	UserControllerInstance.collection = client.Database(database.Name).Collection("users")
-	if UserControllerInstance.collection == nil {
-		panic("Could not get users collection")
-	}
-
-	(*userRoute).Get("/profile", UserControllerInstance.GetUser)
-	(*userRoute).Get("/database", UserControllerInstance.GetPasswordDatabase)
-	(*userRoute).Post("/database", UserControllerInstance.PostPasswordDatabase)
+	(*userRoute).Get("/profile", uc.GetUser)
+	(*userRoute).Get("/database", uc.GetPasswordDatabase)
+	(*userRoute).Post("/database", uc.PostPasswordDatabase)
 }
 
 // public accessible handlers
 func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
-	user := models.User{
-		Username:         ctx.Get("username"),
-		Email:            ctx.Get("email"),
-		Password:         "",
-		PasswordExpired:  true,
-		LoginAttempts:    0,
-		TimeBan:          time.Time{},
-		PasswordDatabase: models.PasswordDatabaseModel{},
+	reqUsername := ctx.FormValue("username")
+	reqEmail := ctx.FormValue("email")
+
+	if reqEmail == "" || reqUsername == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Username or email missing.",
+		})
 	}
 
 	var err error
@@ -56,13 +65,22 @@ func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
 	err = uc.collection.FindOne(
 		context.TODO(),
 		bson.M{
-			"Username": user.Username,
-			"$or":      bson.M{"Email": user.Email},
+			"$or":      []bson.M{{"email": reqEmail}, {"username": reqUsername}},
 		}).Decode(&dbUser)
 
-	if err != nil {
+	if err == nil {
 		response, _ := json.Marshal("message: Username/email already taken.")
 		return ctx.Status(fiber.StatusBadRequest).Send(response)
+	}
+
+	user := models.User{
+		Username:         reqUsername,
+		Email:            reqEmail,
+		Password:         "",
+		PasswordExpired:  true,
+		LoginAttempts:    0,
+		TimeBan:          time.Time{},
+		PasswordDatabase: models.PasswordDatabaseModel{},
 	}
 
 	_, err = uc.collection.InsertOne(context.TODO(), user)
@@ -229,7 +247,6 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 	}
 
 	filename := uuid.New()
-
 	err = ctx.SaveFile(file, fmt.Sprintf("../user_databases/%s", filename))
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -237,22 +254,26 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 		})
 	}
 
-	_, err = uc.collection.UpdateOne(
+	var foundUser models.User
+	err = uc.collection.FindOneAndUpdate(
 		context.TODO(),
 		bson.M{"Username": username},
-		bson.M{"$set" : bson.M{
-			"PasswordDatabase.$.filename": filename,
+		bson.M{"$set": bson.M{
+			"PasswordDatabase.$.filename":  filename,
 			"PasswordDatabase.$.timestamp": time.Now().Unix(),
-		}})
+		}}).Decode(&foundUser)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Database file update error.",
 		})
 	}
 
-	return err
-}
+	err = os.Remove(fmt.Sprintf("../user_databases/%s", foundUser.PasswordDatabase.Filename))
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Database file replace error.",
+		})
+	}
 
-func (uc *UserController) PutPasswordDatabase(ctx *fiber.Ctx) error {
-	return nil
+	return err
 }
