@@ -106,7 +106,7 @@ func (uc *UserController) RequestLoginUser(ctx *fiber.Ctx) error {
 	var user models.User
 	err := uc.collection.FindOne(
 		context.TODO(),
-		bson.M{"Username": username}).Decode(user)
+		bson.M{"username": username}).Decode(&user)
 
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "User does not exist."})
@@ -116,10 +116,10 @@ func (uc *UserController) RequestLoginUser(ctx *fiber.Ctx) error {
 		return ctx.JSON(fiber.Map{"message": "You have been temporarily banned."})
 	}
 
-	err = uc.collection.FindOneAndUpdate(
+	_, err = uc.collection.UpdateOne(
 		context.TODO(),
 		user,
-		bson.M{"Password": password, "PasswordExpired": false}).Decode(user)
+		bson.M{"$set": bson.M{"password": password, "passwordexpired": false}})
 
 	if err != nil {
 		return ctx.SendStatus(fiber.StatusInternalServerError)
@@ -141,7 +141,7 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 
 	err := uc.collection.FindOne(
 		context.TODO(),
-		bson.M{"Username": username, "Password": password, "PasswordExpired": false},
+		bson.M{"username": username, "password": password, "passwordexpired": false},
 	).Decode(&foundUser)
 
 	if !time.Now().After(foundUser.TimeBan) {
@@ -156,7 +156,7 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 		var timeBan time.Time
 		_ = uc.collection.FindOne(
 			context.TODO(),
-			bson.M{"Username": username}).Decode(&foundUser)
+			bson.M{"username": username}).Decode(&foundUser)
 
 		if foundUser.LoginAttempts >= 5 {
 			timeBan = time.Now().Add(time.Minute * 30)
@@ -165,7 +165,7 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 		_ = uc.collection.FindOneAndUpdate(
 			context.TODO(),
 			foundUser,
-			bson.M{"$inc": bson.M{"LoginAttempts": 1}, "TimeBan": timeBan})
+			bson.M{"$inc": bson.M{"loginattempts": 1}, "timeBan": timeBan})
 
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Bad credentials"})
 	}
@@ -174,7 +174,7 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 	_ = uc.collection.FindOneAndUpdate(
 		context.TODO(),
 		foundUser,
-		bson.M{"PasswordExpired": true, "LoginAttempts": 0}).Decode(&foundUser)
+		bson.M{"passwordexpired": true, "loginattempts": 0}).Decode(&foundUser)
 
 	token := jwt.New(jwt.SigningMethodHS256)
 
@@ -190,15 +190,15 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{"token": t})
 }
 
-// logged in only handlers
+// log in protected handlers
 func (uc *UserController) GetUser(ctx *fiber.Ctx) error {
 	user := ctx.Locals("user").(*jwt.Token)
 	claims := user.Claims.(jwt.MapClaims)
 	username := claims["username"].(string)
-	expiryDate := time.Unix(claims["exp"].(int64), 0)
+	expiryDate := time.Unix(int64(claims["exp"].(float64)), 0)
 	var foundUser models.User
 
-	if err := uc.collection.FindOne(context.TODO(), bson.M{"Username": username}).Decode(&foundUser); err != nil {
+	if err := uc.collection.FindOne(context.TODO(), bson.M{"username": username}).Decode(&foundUser); err != nil {
 		return ctx.SendStatus(fiber.StatusInternalServerError)
 	}
 
@@ -217,7 +217,7 @@ func (uc *UserController) GetPasswordDatabase(ctx *fiber.Ctx) error {
 
 	err := uc.collection.FindOne(
 		context.TODO(),
-		bson.M{"Username": username}).Decode(&foundUser)
+		bson.M{"username": username}).Decode(&foundUser)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Error finding user with username " + username + ".",
@@ -257,10 +257,10 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 	var foundUser models.User
 	err = uc.collection.FindOneAndUpdate(
 		context.TODO(),
-		bson.M{"Username": username},
+		bson.M{"username": username},
 		bson.M{"$set": bson.M{
-			"PasswordDatabase.$.filename":  filename,
-			"PasswordDatabase.$.timestamp": time.Now().Unix(),
+			"passworddatabase.$.filename":  filename,
+			"passworddatabase.$.timestamp": time.Now().Unix(),
 		}}).Decode(&foundUser)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
