@@ -14,6 +14,7 @@ func main() {
 	usersAPI.Post("/register", controllers.UserControllerInstance.RegisterUser)
 	usersAPI.Post("/request-login", controllers.UserControllerInstance.RequestLoginUser)
 	usersAPI.Post("/login", controllers.UserControllerInstance.LoginUser)
+
 	usersAPI.Use(jwtware.New(jwtware.Config{
 		SigningKey: []byte("supersecretkey"),
 	}))
