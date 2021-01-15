@@ -39,18 +39,27 @@ func SetupControllerAndRoutes(userRoute *fiber.Router) {
 
 func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
 	user := models.User{
-		Username:          ctx.Get("username"),
-		Password:          "",
-		PasswordExpired:   true,
-		PasswordsSent:     0,
-		TimeBan:           time.Time{},
-		PasswordsDatabase: models.PasswordDatabaseModel{},
+		Username:          	ctx.Get("username"),
+		Email:				ctx.Get("email"),
+		Password:          	"",
+		PasswordExpired:   	true,
+		LoginAttempts:     	0,
+		TimeBan:           	time.Time{},
+		PasswordsDatabase: 	models.PasswordDatabaseModel{},
 	}
 
 	var err error
 	var dbUser models.User
-	if err = uc.collection.FindOne(context.TODO(), bson.M{"Username": user.Username}).Decode(&dbUser); err != nil {
-		response, _ := json.Marshal("message: Username already taken.")
+
+	err = uc.collection.FindOne(
+		context.TODO(),
+		bson.M{
+			"Username": user.Username,
+			"$or": bson.M{"Email": user.Email},
+		}).Decode(&dbUser)
+
+	if err != nil {
+		response, _ := json.Marshal("message: Username/email already taken.")
 		return ctx.Status(fiber.StatusBadRequest).Send(response)
 	}
 
@@ -72,7 +81,32 @@ func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
 
 func (uc *UserController) RequestLoginUser(ctx *fiber.Ctx) error {
 	username := ctx.FormValue("username")
-	
+	password, _ := GenerateRandomString(12)
+
+	var user models.User
+	err := uc.collection.FindOne(
+		context.TODO(),
+		bson.M{"Username": username}).Decode(user)
+
+	if !time.Now().After(user.TimeBan) {
+		return ctx.JSON(fiber.Map{"message": "You have been temporarily banned."})
+	}
+
+	err = uc.collection.FindOneAndUpdate(
+		context.TODO(),
+		user,
+		bson.M{"Password": password, "PasswordExpired": false}).Decode(user)
+
+	if err != nil {
+		return ctx.SendStatus(fiber.StatusInternalServerError)
+	}
+
+	// simulates sending to email
+	log.Print("User: " + username + "\nPassword: " + password)
+
+	return ctx.JSON(fiber.Map{
+		"message": "Password sent to email successfully!",
+	})
 }
 
 func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
@@ -81,13 +115,40 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 
 	var foundUser models.User
 
-	err := uc.collection.FindOneAndUpdate(
+	err := uc.collection.FindOne(
 		context.TODO(),
 		bson.M{"Username": username, "Password": password, "PasswordExpired": false},
-		bson.M{"PasswordExpired": true, "PasswordsSent": 0}).Decode(&foundUser)
+		).Decode(&foundUser)
+
+	if !time.Now().After(foundUser.TimeBan) {
+		return ctx.JSON(fiber.Map{"message": "You have been temporarily banned."})
+	}
+
+	if foundUser.PasswordExpired == true {
+		return ctx.JSON(fiber.Map{"message": "Password has expired, you should request a new one."})
+	}
+
+	_ = uc.collection.FindOneAndUpdate(
+		context.TODO(),
+		foundUser,
+		bson.M{"PasswordExpired": true, "LoginAttempts": 0}).Decode(&foundUser)
 
 	if err != nil {
-		return ctx.SendStatus(fiber.StatusInternalServerError)
+		var timeBan time.Time
+		_ = uc.collection.FindOne(
+			context.TODO(),
+			bson.M{"Username": username}).Decode(&foundUser)
+
+		if foundUser.LoginAttempts >= 5 {
+			timeBan = time.Now().Add(time.Minute * 30)
+		}
+
+		_ = uc.collection.FindOneAndUpdate(
+			context.TODO(),
+			foundUser,
+			bson.M{"$inc": bson.M{"LoginAttempts": 1}, "TimeBan": timeBan})
+
+		return ctx.SendStatus(fiber.StatusBadRequest)
 	}
 
 	token := jwt.New(jwt.SigningMethodHS256)
