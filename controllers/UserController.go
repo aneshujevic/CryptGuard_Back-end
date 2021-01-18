@@ -13,12 +13,15 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
 type UserController struct {
 	collection *mongo.Collection
 }
+
+const CURR_PATH = "/home/goofy/playground/Go/CryptGuard_Back-end"
 
 var userControllerInstance *UserController
 
@@ -50,8 +53,8 @@ func SetupControllerAndRoutes(userRoute *fiber.Router) {
 
 // public accessible handlers
 func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
-	reqUsername := ctx.FormValue("username")
-	reqEmail := ctx.FormValue("email")
+	reqEmail := strings.TrimSpace(ctx.FormValue("email"))
+	reqUsername := strings.TrimSpace(ctx.FormValue("username"))
 
 	if reqEmail == "" || reqUsername == "" {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -134,8 +137,8 @@ func (uc *UserController) RequestLoginUser(ctx *fiber.Ctx) error {
 }
 
 func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
-	username := ctx.FormValue("username")
-	password := ctx.FormValue("password")
+	username := strings.TrimSpace(ctx.FormValue("username"))
+	password := strings.TrimSpace(ctx.FormValue("password"))
 
 	var foundUser models.User
 
@@ -250,7 +253,7 @@ func (uc *UserController) GetPasswordDatabase(ctx *fiber.Ctx) error {
 		})
 	}
 
-	err = ctx.SendFile(fmt.Sprintf("../user_databases/%s", foundUser.PasswordDatabase.Filename), true)
+	err = ctx.SendFile(fmt.Sprintf(CURR_PATH+"/user_databases/%s", foundUser.PasswordDatabase.Filename), true)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "No database found.",
@@ -273,7 +276,7 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 	}
 
 	filename := uuid.New()
-	err = ctx.SaveFile(file, fmt.Sprintf("../user_databases/%s", filename))
+	err = ctx.SaveFile(file, fmt.Sprintf(CURR_PATH+"/user_databases/%s", filename))
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Error while saving file.",
@@ -285,8 +288,8 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 		context.TODO(),
 		bson.M{"username": username},
 		bson.M{"$set": bson.M{
-			"passworddatabase.$.filename":  filename,
-			"passworddatabase.$.timestamp": time.Now().Unix(),
+			"passworddatabase.filename":  filename.String(),
+			"passworddatabase.timestamp": time.Now().Unix(),
 		}}).Decode(&foundUser)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -294,11 +297,13 @@ func (uc *UserController) PostPasswordDatabase(ctx *fiber.Ctx) error {
 		})
 	}
 
-	err = os.Remove(fmt.Sprintf("../user_databases/%s", foundUser.PasswordDatabase.Filename))
-	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": "Database file replace error.",
-		})
+	if foundUser.PasswordDatabase.Filename != "" {
+		err = os.Remove(fmt.Sprintf(CURR_PATH+"/user_databases/%s", foundUser.PasswordDatabase.Filename))
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"message": "Database file replace error.",
+			})
+		}
 	}
 
 	return err
