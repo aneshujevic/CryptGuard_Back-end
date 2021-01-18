@@ -11,7 +11,6 @@ func main() {
 	app := fiber.New()
 
 	usersAPI := app.Group("/api")
-
 	usersAPI.Post("/login", controllers.GetUserControllerInstance().LoginUser)
 	usersAPI.Post("/register", controllers.GetUserControllerInstance().RegisterUser)
 	usersAPI.Post("/request-login", controllers.GetUserControllerInstance().RequestLoginUser)

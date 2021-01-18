@@ -65,7 +65,7 @@ func (uc *UserController) RegisterUser(ctx *fiber.Ctx) error {
 	err = uc.collection.FindOne(
 		context.TODO(),
 		bson.M{
-			"$or":      []bson.M{{"email": reqEmail}, {"username": reqUsername}},
+			"$or": []bson.M{{"email": reqEmail}, {"username": reqUsername}},
 		}).Decode(&dbUser)
 
 	if err == nil {
@@ -141,8 +141,13 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 
 	err := uc.collection.FindOne(
 		context.TODO(),
-		bson.M{"username": username, "password": password, "passwordexpired": false},
+		bson.M{"username": username},
 	).Decode(&foundUser)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "No user with that username.",
+		})
+	}
 
 	if !time.Now().After(foundUser.TimeBan) {
 		return ctx.JSON(fiber.Map{"message": "You have been temporarily banned."})
@@ -152,6 +157,10 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 		return ctx.JSON(fiber.Map{"message": "Password has expired, you should request a new one."})
 	}
 
+	err = uc.collection.FindOne(
+		context.TODO(),
+		bson.M{"username": username, "password": password},
+	).Decode(&foundUser)
 	if err != nil {
 		var timeBan time.Time
 		_ = uc.collection.FindOne(
@@ -159,22 +168,39 @@ func (uc *UserController) LoginUser(ctx *fiber.Ctx) error {
 			bson.M{"username": username}).Decode(&foundUser)
 
 		if foundUser.LoginAttempts >= 5 {
+			fmt.Println()
 			timeBan = time.Now().Add(time.Minute * 30)
 		}
 
-		_ = uc.collection.FindOneAndUpdate(
+		_, err = uc.collection.UpdateOne(
 			context.TODO(),
-			foundUser,
-			bson.M{"$inc": bson.M{"loginattempts": 1}, "timeBan": timeBan})
+			bson.M{"username": foundUser.Username},
+			bson.M{
+				"$set": bson.M{"timeban": timeBan},
+			},
+		)
+		if err != nil {
+			return ctx.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		_, err = uc.collection.UpdateOne(
+			context.TODO(),
+			bson.M{"username": foundUser.Username},
+			bson.M{
+				"$inc": bson.M{"loginattempts": 1},
+			})
+		if err != nil {
+			return ctx.SendStatus(fiber.StatusInternalServerError)
+		}
 
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Bad credentials"})
 	}
 
 	// successful login
-	_ = uc.collection.FindOneAndUpdate(
+	_, err = uc.collection.UpdateOne(
 		context.TODO(),
-		foundUser,
-		bson.M{"passwordexpired": true, "loginattempts": 0}).Decode(&foundUser)
+		bson.M{"username": username},
+		bson.M{"$set": bson.M{"passwordexpired": true, "loginattempts": 0}})
 
 	token := jwt.New(jwt.SigningMethodHS256)
 

@@ -10,6 +10,6 @@ type User struct {
 	Password         string                `json:"password"`
 	PasswordExpired  bool                  `json:"password_expired"`
 	LoginAttempts    int                   `json:"-"`
-	TimeBan          time.Time             `json:"-"`
+	TimeBan          time.Time             `json:"timeban"`
 	PasswordDatabase PasswordDatabaseModel `json:"database"`
 }
